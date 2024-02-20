@@ -1,0 +1,573 @@
+---
+title: "Impact of Smoking and Drinking"
+author: "Srividhya Pattabiraman, Disha Chiplonker, Shruthi Mysore Narayanaswamy"
+date: "11/25/2023"
+output:
+  pdf_document:
+    fig_height: 3
+    fig_width: 5
+  html_document:
+    fig_height: 3
+    fig_width: 5
+  word_document:
+    fig_height: 3
+    fig_width: 5
+---
+
+
+```{r, include=FALSE}
+# This loads the mosaic and dplyr packages
+require(mosaic)
+require(dplyr)
+require(corrplot)
+library(ggplot2)
+
+```
+
+```{r, include=FALSE}
+# This changes the default colors in lattice plots.
+trellis.par.set(theme=theme.mosaic())  
+
+# knitr settings to control how R chunks work.
+require(knitr)
+opts_chunk$set(
+  tidy=FALSE,     # display code as typed
+  size="small"    # slightly smaller font for code
+)
+# This loads the mosaic data sets.  (Could be deleted if you are not using them.)
+require(mosaicData)                
+```
+
+---
+
+**INTRODUCTION**  
+  
+In this project, we will analyze impacts of smoking and drinking from data set collected 
+by National Health Insurance Service in Korea.  
+
+Smoking and Drinking has always given way for numerous diseases and illnesses. It is important
+to study the impact of drinking and smoking on various health parameters like Cholesterol,
+Liver, etc.   
+For this very reason we chose to analyse and answer the following questions through 
+our study:  
+1) Is there a relationship between smoking and drinking?  
+2) How Smoking affects Good Cholesterol?  
+3) How Smoking and Drinking affects Liver?  
+4) Is there any relationship associated with Weight and Drinking?  
+
+
+We begin by loading the data set of 991,346 observations into the R workspace. 
+
+```{r include=FALSE}
+library(knitr)
+require(mosaic)
+#opts_chunk$set(eval=FALSE)
+```
+
+```{r load-data}
+sd_data <- read.csv("smoking_driking_dataset_Ver01.csv", as.is=T)
+```
+
+**Description of the data given by the insurance company:**
+
+This dataset has almost 14 attributes,
+
+Sex	- male, female
+age -	round up to 5 years
+height - round up to 5 cm[cm]
+weight - round up to 5 kg[kg]
+sight_left - eyesight(left) - (0.1~2.5, eyesight < 0.1 = 0.1 (good), blind = 9.9)
+sight_right - eyesight(right) - (0.1~2.5, eyesight < 0.1 = 0.1 (good), blind = 9.9)
+hear_left - hearing left, 1(normal), 2(abnormal)
+hear_right - hearing right, 1(normal), 2(abnormal)
+SBP - Systolic blood pressure[mmHg]
+DBP - Diastolic blood pressure[mmHg]
+BLDS - BLDS or FSG(fasting blood glucose)[mg/dL]
+tot_chole - total cholesterol[mg/dL]
+HDL_chole - HDL cholesterol[mg/dL]
+LDL_chole - LDL cholesterol[mg/dL]
+triglyceride - triglyceride[mg/dL]
+hemoglobin - hemoglobin[g/dL]
+urine_protein - protein in urine, 1(-), 2(+/-), 3(+1), 4(+2), 5(+3), 6(+4) - 1 - Normal, 2 - Borderline, >2 - Abnormal
+serum_creatinine - serum(blood) creatinine[mg/dL]
+SGOT_AST - SGOT(Glutamate-oxaloacetate transaminase) AST(Aspartate transaminase)[IU/L]
+SGOT_ALT - ALT(Alanine transaminase)[IU/L]
+gamma_GTP - y-glutamyl transpeptidase[IU/L]
+SMK_stat_type_cd - Smoking state, 1(never), 2(used to smoke but quit), 3(still smoke)
+DRK_YN - Drinker or Not
+
+From the given information, we can identify the categorical and numerical columns.
+
+Categorical (non-ordinal) - Sex, hear_left, hear_right, SMK_state_type_cd, DRK_YN
+Categorical (ordinal) - unine_protein
+Numerical (discrete) - age, height, weight
+Numerical (continuous) - all the other attributes
+
+```{r}
+sd_data <- sd_data %>% mutate(DRK_YN = factor(DRK_YN), SMK_stat_type_cd = factor(SMK_stat_type_cd), sex = factor(sex), hear_left = factor(hear_left), hear_right = factor(hear_right), urine_protein = factor(urine_protein))
+summary(sd_data)
+```
+
+**Data Quality Check**
+
+We checked for any missing data and remove them. Since there was no missing data and the data quality was good. We proceeded with the analysis.
+
+```{r Missing Data }
+colSums(is.na(sd_data))
+```
+**Correlation study**  
+We ran a correlation study of various factors against smoking and drinking as a preliminary step of analysis.
+```{r Correlation include=FALSE}
+sd_numeric_data <- sd_data %>%
+      mutate(DRK_YN = ifelse(DRK_YN == "N",0,1), sex = ifelse(sex == "Male",0,1))
+indx <- sapply(sd_numeric_data, is.factor)
+sd_numeric_data[indx] <- lapply(sd_numeric_data[indx], function(x) as.numeric(as.character(x)))
+summary(sd_numeric_data)
+```
+```{r Correlation matrix, fig.width=8, fig.height=8}
+corrplot(cor(sd_numeric_data), method = 'circle', addCoef.col ='black', number.cex = 0.7, type = 'lower', tl.srt=45, tl.cex = 0.6)
+
+corr <- cor(sd_numeric_data[tail(names(sd_numeric_data), 2)], sd_numeric_data)
+corrplot(corr, method = 'circle', addCoef.col ='black', number.cex = 0.5, cl.pos = 'n')
+
+smk_correlated <- colnames(corr)[abs(corr[1, ]) >= 0.2]
+drk_correlated <- colnames(corr)[abs(corr[2, ]) >= 0.2]
+
+cat("If we consider correlation threshold as 0.2 then factors that are correlated to, \n")
+cat("Smoking:", smk_correlated, "\n")
+cat("Drinking:", drk_correlated, "\n\n")
+
+```
+**Is there a relationship between smoking and drinking?**  
+From the correlation test we can see that smoking and drinking has a high correlation factor. Let's further test it with Chi-Square test.
+
+
+**In order to run the test, below are the assumptions:**   
+1) Run on categorical data - Both SMK_stat_type_cd and DRK_YN are categorical.  
+2) Observations are independent - It is indicated that observations are independent.  
+3) Data is from a random sample - Data is drawn from random people from the population.  
+4) Large Sample size - Sample size is large enough (>30). 
+
+**Hypothesis:**
+
+**Null Hypothesis $H_0$**: There is no association between Smoking State and Drinking Status.  
+**Alternative Hypothesis $H_a$**: There is a significant association between Smoking State and Drinking Status.
+
+```{r Chi-Sq Smoking and Drinking}
+
+# Bar chart for Smoking State
+ggplot(sd_data, aes(x = SMK_stat_type_cd, fill = SMK_stat_type_cd)) +
+  geom_bar() +
+  ggtitle("Distribution of Smoking State") +
+  xlab("Smoking State") +
+  ylab("Count") +
+  theme_minimal()
+
+# Bar chart for Drinking Status
+ggplot(sd_data, aes(x = DRK_YN, fill = DRK_YN)) +
+  geom_bar() +
+  ggtitle("Distribution of Drinking Status") +
+  xlab("Drinking Status") +
+  ylab("Count") +
+  theme_minimal()
+
+# Chi-Square Test
+chisq_result <- chisq.test(sd_data$SMK_stat_type_cd, sd_data$DRK_YN)
+
+ggplot(sd_data, aes(x = SMK_stat_type_cd, fill = DRK_YN)) +
+  geom_bar(position = "dodge") +
+  ggtitle("Association between Smoking State and Drinking Status") +
+  xlab("Smoking State") +
+  ylab("Count") +
+  theme_minimal()
+
+# Display Chi-Square test results
+print(chisq_result)
+```
+Since the **p-value is less than the commonly used significance level of 0.05**, we would reject the null hypothesis. This indicates that there is strong evidence to suggest that the distribution of drinking status is significantly dependent on different smoking states.
+
+As we can see from the bar graphs, significant number of people who smoke also tend to drink.
+
+
+**How Smoking affects Good Cholesterol (HDL)?**
+
+Let's select age 20-60 where smoking and drinking seems to be more prevalent. Let us also combine people who have previously smoked but have given up also under Smoking category for better comparison.
+
+```{r HDL}
+primeage_and_smoke <- sd_data %>%
+  filter(age >= 20 & age <= 60 & (SMK_stat_type_cd == 2 | SMK_stat_type_cd == 3))
+primeage_and_nosmoke <- sd_data %>%
+  filter(age >= 20 & age <= 60 & SMK_stat_type_cd == 1)
+
+# Combine the filtered data frames for plotting
+combined_data <- rbind(
+  mutate(primeage_and_smoke, Smoking = "Smoked/Smoker"),
+  mutate(primeage_and_nosmoke, Smoking = "Non-Smoker")
+)
+
+ggplot(combined_data, aes(x=HDL_chole)) +
+geom_histogram() +
+facet_wrap(~Smoking, scales="free")+
+labs(title = "Histograms of HDL for non smokers vs smokers",
+       x = "HDL",
+       y = "count")
+
+plotdata_Cholestrol <- combined_data %>%
+  group_by(age, Smoking) %>%
+  summarize(n = count(HDL_chole),
+            mean = mean(HDL_chole))
+
+# plot the means and standard errors by age
+ggplot(plotdata_Cholestrol, aes(x = age,
+                     y = mean, 
+                     group=Smoking, 
+                     color=Smoking)) +
+  geom_point(size = 3) +
+  geom_line(size = 1) +
+  ggtitle("HDL Level vs Smoke State") +
+  theme_minimal()
+```
+
+**Sample means** and **Standard Deviation** of HDL cholesterol for Smoked/Smoker and Non-smokers is shown below:
+
+```{r}
+smoker <- combined_data %>% filter(Smoking == "Smoked/Smoker") 
+non_smoker <- combined_data %>% filter(Smoking == "Non-Smoker")
+
+tapply(combined_data$HDL_chole, combined_data$Smoking, mean)
+
+tapply(combined_data$HDL_chole, combined_data$Smoking, sd)
+```
+**The above result show that the HDL Cholesterol of non-smokers on average is higher than that of smoked/smoker which is expected.**
+
+The number of samples for non-smokers and smoked/smoker is as below:
+```{r}
+
+table(select(combined_data, Smoking))
+
+```
+
+
+**Assumptions for smoked/smoker data:**  
+1. Samples are random and independent.  
+2. The number of records is 346516, since sample size is greater than 30, by Central Limit Theorem we say that the sampling mean distribution is normal with mean = 53.53361 and standard deviation = 14.21395.  
+
+**Assumptions for non-smoker data:**    
+1. Samples are random and independent.  
+2. The number of records is 497611, since sample size is greater than 30, by Central Limit Theorem we say that the sampling mean distribution is normal with mean = 60.17699 and standard deviation = 19.23414.  
+
+**The 95% confidence interval for smoked/smoker is:**
+
+```{r}
+confint(lm(smoker$HDL_chole~1),level=0.95)
+```
+
+**The 95% confidence interval for non-smoker is:**
+
+```{r}
+confint(lm(non_smoker$HDL_chole~1),level=0.95)
+```
+
+**Box and Whisker Plot:**  
+
+```{r}
+bwplot(HDL_chole ~ Smoking, data = combined_data)
+```
+  
+There is outlier in HDL Cholesterol of non-smoker sample, but not much.
+
+**Hypothesis Test:**
+
+**Null Hypothesis $H_0$:** True difference between the means of non-smokers and smoked/smoker is 0.  
+**Alternate Hypothesis $H_a$:**True difference between the means of non-smokers and smoked/smoker is not equal to 0.
+
+**Test - Welch Two Sample t-test**
+
+**Test statistic - t**
+
+```{r}
+t.test(HDL_chole ~ Smoking, data = combined_data)
+```
+**Confidence Interval Approach**   
+Since 0 is not present in the 95% confidence interval of (6.571998, 6.714767), we reject the null hypothesis at alpha = 0.05. 
+We can say that there is difference in HDL cholesterol for smokers and non-smokers.
+
+**p-value approach**  
+p-value < 2.2e-16 i.e. p-value is less than 2.2e-16 which is less than 0.05, reject the null hypothesis at alpha = 0.05. There is difference in HDL cholesterol for smokers and non-smokers.
+  
+  
+  
+**How Smoking and Drinking affects Liver (Gamma GTP)?**
+
+```{r gamma_GTP}
+# Calculate the interquartile range (IQR) for triglyceride
+Q1 <- quantile(sd_data$gamma_GTP, 0.25)
+Q3 <- quantile(sd_data$gamma_GTP, 0.75)
+IQR_value <- Q3 - Q1
+
+# Define the lower and upper bounds for outliers
+lower_outlier <- Q1 - 3 * IQR_value
+upper_outlier <- Q3 + 3 * IQR_value
+
+# Filter out rows with triglyceride values outside the bounds
+filtered_gamma_GTP <- sd_data %>%
+  filter(gamma_GTP >= lower_outlier, gamma_GTP <= upper_outlier)
+
+ggplot(filtered_gamma_GTP, aes(y = gamma_GTP, fill = SMK_stat_type_cd)) +
+  geom_boxplot(alpha = 0.8) +
+  labs(title = "Gamma_GTP vs Smoke state") +
+  scale_fill_brewer(palette = "Set1")
+
+ggplot(filtered_gamma_GTP, aes(y = gamma_GTP, fill = DRK_YN)) +
+  geom_boxplot(alpha = 0.8) +
+  labs(title = "Gamma_GTP vs Drink state") +
+  scale_fill_brewer(palette = "Set2")
+```
+
+
+The box plot above confirms that we can find elevated levels of Gamma GTP in case of Smokers and Drinkers. As per a regular assumption, waistline is a contributing factor for the elevated levels of Gamma GTP that affects the functioning of liver. To confirm the assumption, we have the following claim:
+
+**Null Hypothesis $H_0$**: Waistline affects increased levels of Gamma GTP in case of Smokers and Drinkers.
+
+**Alternate Hypothesis $H_a$**: Waistline has no effect on increased levels of Gamma GTP in case of Smokers and Drinkers.
+
+
+
+**Histogram of Gamma GTP in Smokers and Drinkers:**
+```{r}
+smoke_drink_data <- sd_data %>%
+  filter((SMK_stat_type_cd == 2 | SMK_stat_type_cd == 3) & DRK_YN == "Y")
+hist(smoke_drink_data$gamma_GTP,
+     main = "Histogram of Gamma GTP in Smokers and Drinkers", 
+     xlab = "Gamma GTP",
+     ylab = "Frequency",
+     xlim = c(0,500),
+     breaks = 200,
+     col = "red")
+
+hist(smoke_drink_data$waistline,
+     main = "Histogram of Waistline in Smokers and Drinkers", 
+     xlab = "Waistline",
+     ylab = "Frequency",
+     xlim = c(0,200),
+     breaks = 50,
+     col = "red")
+```
+
+
+**Histogram of Gamma GTP in non-Smokers and non-Drinkers:**
+```{r}
+nsmoke_ndrink_data <- sd_data %>%
+  filter((SMK_stat_type_cd == 1) & DRK_YN == "N")
+hist(smoke_drink_data$gamma_GTP,
+     main = "Histogram of Gamma GTP in non-Smokers and non-Drinkers", 
+     xlab = "Gamma GTP",
+     ylab = "Frequency",
+     xlim = c(0,500),
+     breaks = 500,
+     col = "blue")
+hist(smoke_drink_data$waistline,
+     main = "Histogram of Waistline in non-Smokers and non-Drinkers", 
+     xlab = "Waistline",
+     ylab = "Frequency",
+     xlim = c(0,200),
+     breaks = 50,
+     col = "blue")
+```
+
+
+**Scatterplot of Waistline in Smokers and Drinkers**
+```{r}
+xyplot(waistline ~ gamma_GTP, data = smoke_drink_data,
+main = "Scatterplot of Waistline vs Gamma GTP in Smokers and Drinkers", 
+xlab = "Waistline",
+ylab = "Gamma GTP",
+xlim = c(0, 300),
+ylim = c(0, 300),
+col = "red")
+```
+
+
+**Scatterplot of Waistline in non-Smokers and non-Drinkers**
+```{r}
+xyplot(waistline ~ gamma_GTP, data = nsmoke_ndrink_data,
+main = "Scatterplot of Waistline vs Gamma GTP in non-Smokers and non-Drinkers", 
+xlab = "Waistline",
+ylab = "Gamma GTP",
+xlim = c(0, 300),
+ylim = c(0, 300),
+col = "blue")
+```
+
+
+**Fitting a linear model for waistline effects in Gamma GTP for Smokers and Drinkers:**
+```{r}
+sd_model <- lm(gamma_GTP ~ waistline, data = smoke_drink_data)
+```
+```{r}
+sd_residuals <- resid(sd_model)
+qqnorm(sd_residuals)
+qqline(sd_residuals, col = 2)
+xyplot(resid(sd_model) ~ fitted(sd_model), data=smoke_drink_data, type=c("p", "r"))
+```
+
+
+**Assumptions for Linear model:**  
+1. We assume that as per our interest of claim and scatter plot, the data follows a linear model.  
+2. The sample selected is a random sample and all considered records are independent of each other.  
+3. Sample size is 282,057. Since the sample size n is larger than 30, by Central Limit Theorem, the sample follows a normal distribution.
+4. As per the QQ plot, the residuals follow a normal distribution and the expected variance of residuals is almost zero.  
+
+
+
+
+**Fitting a linear model for waistline effects in Gamma GTP for non-Smokers and non-Drinkers:**
+```{r}
+nsnd_model <- lm(gamma_GTP ~ waistline, data = nsmoke_ndrink_data)
+```
+
+```{r}
+nsnd_residuals <- resid(nsnd_model)
+qqnorm(nsnd_residuals)
+qqline(nsnd_residuals, col = 2)
+xyplot(resid(nsnd_model) ~ fitted(nsnd_model), data=nsmoke_ndrink_data, type=c("p", "r"))
+```
+
+
+**Assumptions for Linear model:**  
+1. We assume that as per our interest of claim and scatter plot, the data follows a linear model.  
+2. The sample selected is a random sample and all considered records are independent of each other.  
+3. Sample size is 389,010. Since the sample size n is larger than 30, by Central Limit Theorem, the sample follows a normal distribution.  
+4. As per the QQ plot, the residuals follow a normal distribution and the expected variance of residuals is almost zero.
+
+
+
+**Performing $R^2$ test on the linearly fitted model.**
+
+1. Waistline effects in Gamma GTP for non-Smokers and non-Drinkers:
+
+```{r}
+summary(sd_model)
+```
+The $R^2$ value of 0.02099 indicates that the linear regression model explains the variation of waistline and Gamma GTP only by 2.1%. This is not a very high explanation of variance as it might not consider all factors that are leading to the increase in Gamma GTP with respect to the waistline. The value of $R^2$ here is very low which suggests the model does not clearly explain the effects of increase or decrease in waistline as the only parameter which affects Gamma GTP in Smokers and Drinkers.
+
+
+```{r}
+summary(nsnd_model)
+```
+
+The $R^2$ value of 0.01731 indicates that the linear regression model explains the variation of waistline and Gamma GTP only by 1.7%. This is not a very high explanation of variance as it might not consider all factors that are leading to the increase in Gamma GTP with respect to the waistline. The value of $R^2$ here is very low which suggests the model does not clearly explain the effects of increase or decrease in waistline as the only parameter which affects Gamma GTP in non-Smokers and non-Drinkers.
+
+**Conclusion of the test:**. 
+As per our assumption, the increase in size of waistline had direct effect on the increase in Gamma GTP in case of Smokers and Drinkers and vice-versa in case of non-Smokers and non-Drinkers. The $R^2$ test confirms that the waistline does not necessarily have any effect on the elevated levels of Gamma GTP in case of Smokers and Drinkers and normal levels of Gamma GTP in case of non-Smokers and non-Drinkers. This can be concluded because the adjusted $R^2$ value in both cases does not vary by a lot.  
+As per this test, we conclude that we reject our claim $H_0$ and say that, Waistline has no significant effect on increased levels of Gamma GTP in case of Smokers and Drinkers.
+ 
+
+
+
+**Is there any relationship associated with Weight and Drinking?**
+
+Let's select age 20-60 where smoking and drinking seems to be more prevalent.
+
+```{r}
+primeage_and_drink <- sd_data %>%
+  filter(age >= 20 & age <= 60 & (DRK_YN == 'Y'))
+primeage_and_nodrink <- sd_data %>%
+  filter(age >= 20 & age <= 60 & DRK_YN == 'N')
+
+# Combine the filtered data frames for plotting
+combined_data <- rbind(
+  mutate(primeage_and_drink, Drink = "Y"),
+  mutate(primeage_and_nodrink, Drink = "N")
+)
+
+ggplot(combined_data, aes(x=weight)) +
+geom_histogram() +
+facet_wrap(~Drink, scales="free")+
+labs(title = "Histograms of weight for non drinker vs drinker",
+       x = "weight",
+       y = "count")
+
+plotdata_weight <- combined_data %>%
+  group_by(age, Drink) %>%
+  summarize(n = count(weight),
+            mean = mean(weight))
+
+# plot the means and standard errors by age
+ggplot(plotdata_weight, aes(x = age,
+                     y = mean, 
+                     group=Drink, 
+                     color=Drink)) +
+  geom_point(size = 3) +
+  geom_line(size = 1) +
+  ggtitle("Weight vs Drinking Habit") +
+  theme_minimal()
+```
+
+**Sample means** and **Standard Deviation** of weight for Drinkers and Non-drinkers is shown below:
+
+```{r}
+drinker <- combined_data %>% filter(Drink == "Y") 
+non_drinker <- combined_data %>% filter(Drink == "N")
+tapply(combined_data$weight, combined_data$Drink, mean)
+tapply(combined_data$weight, combined_data$Drink, sd)
+```
+**The above result show that the Weight of drinkers on average is higher than that of non-drinkers which is expected.**
+
+The number of samples for non-smokers and smoked/smoker is as below:
+```{r}
+table(select(combined_data, Drink))
+```
+
+
+**Assumptions for Drinker data:**  
+1. Samples are random and independent.  
+2. The number of records is 459792, since sample size is greater than 30, by Central Limit Theorem we say that the sampling mean distribution is normal with mean = 66.88935 and standard deviation = 12.74912.
+
+**Assumptions for non-drinker data:**  
+1. Samples are random and independent.  
+2. The number of records is 384335, since sample size is greater than 30, by Central Limit Theorem we say that the sampling mean distribution is normal with mean = 60.78834 and standard deviation = 11.92127.
+
+**The 95% confidence interval for Drinker is:**
+
+```{r}
+confint(lm(drinker$weight~1),level=0.95)
+```
+
+**The 95% confidence interval for non-drinker is:**
+
+```{r}
+confint(lm(non_drinker$weight~1),level=0.95)
+```
+
+
+```{r}
+ggplot(combined_data, aes(x = weight, fill = DRK_YN)) + 
+  geom_bar(position = "fill", alpha = 0.8) +
+  labs(y = "Proportion") +
+  scale_fill_brewer(palette = "Set1") + 
+  scale_y_continuous(breaks = seq(0, 1, .2)) + 
+  scale_x_continuous(breaks = seq(0, max(combined_data$weight), by = 20), labels = seq(0, max(combined_data$weight), by = 20)) +
+  theme_minimal()
+```
+
+**Hypothesis Test:**
+
+**Null Hypothesis $H_0$:** True difference between the means of non-drinkers and drinkers is 0.  
+**Alternate Hypothesis $H_a$:**True difference between the means of non-drinkers and drinkers is not equal to 0.  
+
+**Test - Welch Two Sample t-test**
+
+**Test statistic - t**
+
+```{r}
+t.test(weight ~ Drink, data = combined_data)
+```
+**Confidence Interval Approach**  
+Since 0 is not present in the 95% confidence interval of (6.571998, 6.714767), we reject the null hypothesis at alpha = 0.05. 
+We can say that there is difference in weight for non-drinkers and drinkers.
+
+**p-value approach**  
+p-value < 2.2e-16 i.e. p-value is less than 2.2e-16 which is less than 0.05, reject the null hypothesis at alpha = 0.05. There is difference in weight for non-drinkers and drinkers.
+
+
